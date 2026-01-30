@@ -39,10 +39,16 @@ def get_answer(item):
     return item.get('answer') or item.get('data', {}).get('user_correct_key', '')
 
 @st.cache_data
-def load_image(file_path):
-    """Cache image loading"""
+def load_image(file_path, max_width=1200):
+    """Cache image loading with resize for performance"""
     if os.path.exists(file_path):
-        return Image.open(file_path)
+        img = Image.open(file_path)
+        # Resize if too large
+        if img.width > max_width:
+            ratio = max_width / img.width
+            new_size = (max_width, int(img.height * ratio))
+            img = img.resize(new_size, Image.LANCZOS)
+        return img
     return None
 
 # --- PAGE CONFIG ---
@@ -261,20 +267,23 @@ with tab3:
         if 'score' not in st.session_state:
             st.session_state.score = {'correct': 0, 'total': 0}
 
+        # Navigation callbacks
+        def go_prev():
+            st.session_state.q_index = max(0, st.session_state.q_index - 1)
+            st.session_state.revealed = False
+
+        def go_next(max_idx):
+            st.session_state.q_index = min(max_idx, st.session_state.q_index + 1)
+            st.session_state.revealed = False
+
         # Navigation
         col1, col2, col3 = st.columns([1, 2, 1])
         with col1:
-            if st.button("⬅️ Previous"):
-                st.session_state.q_index = max(0, st.session_state.q_index - 1)
-                st.session_state.revealed = False
-                st.rerun()
+            st.button("⬅️ Previous", on_click=go_prev, disabled=st.session_state.q_index == 0)
         with col2:
             st.write(f"**Question {st.session_state.q_index + 1} of {len(practice_items)}**")
         with col3:
-            if st.button("Next ➡️"):
-                st.session_state.q_index = min(len(practice_items) - 1, st.session_state.q_index + 1)
-                st.session_state.revealed = False
-                st.rerun()
+            st.button("Next ➡️", on_click=go_next, args=(len(practice_items) - 1,), disabled=st.session_state.q_index >= len(practice_items) - 1)
 
         st.divider()
 
@@ -373,13 +382,14 @@ with tab3:
             pct = st.session_state.score['correct'] / st.session_state.score['total'] * 100
             st.metric("Score", f"{st.session_state.score['correct']}/{st.session_state.score['total']}", f"{pct:.0f}%")
 
-        if st.button("🔄 Reset Session"):
+        def reset_session():
             st.session_state.score = {'correct': 0, 'total': 0}
             st.session_state.q_index = 0
             st.session_state.revealed = False
             if 'shuffled' in st.session_state:
                 del st.session_state.shuffled
-            st.rerun()
+
+        st.button("🔄 Reset Session", on_click=reset_session)
 
 # --- SIDEBAR ---
 with st.sidebar:
