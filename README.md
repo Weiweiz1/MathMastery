@@ -1,6 +1,6 @@
 # Mistake Mastery Engine
 
-A local Python application to help children practice primary school math by learning from their mistakes. Built for NSW OC placement preparation.
+A local Python application to help children practice primary school math by learning from their mistakes. Built for NSW OC and selective placement preparation.
 
 ## Features
 
