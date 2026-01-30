@@ -13,6 +13,7 @@ DB_FILE = "./mistakes_db.json"
 Path(VAULT_DIR).mkdir(exist_ok=True)
 
 # --- DATABASE FUNCTIONS ---
+@st.cache_data(ttl=5)
 def load_db():
     if os.path.exists(DB_FILE):
         with open(DB_FILE, 'r') as f:
@@ -22,6 +23,8 @@ def load_db():
 def save_db(data):
     with open(DB_FILE, 'w') as f:
         json.dump(data, f, indent=2)
+    # Clear cache after saving
+    load_db.clear()
 
 def get_file_hash(file_path):
     with open(file_path, 'rb') as f:
@@ -34,6 +37,13 @@ def normalize_answer(ans):
 def get_answer(item):
     """Get answer from either new or old format"""
     return item.get('answer') or item.get('data', {}).get('user_correct_key', '')
+
+@st.cache_data
+def load_image(file_path):
+    """Cache image loading"""
+    if os.path.exists(file_path):
+        return Image.open(file_path)
+    return None
 
 # --- PAGE CONFIG ---
 st.set_page_config(
@@ -276,8 +286,9 @@ with tab3:
             st.subheader("📝 Question")
             st.markdown(f"**{current['question_text']}**")
         else:
-            if os.path.exists(current['file_path']):
-                st.image(current['file_path'], use_container_width=True)
+            img = load_image(current['file_path'])
+            if img:
+                st.image(img, use_container_width=True)
             else:
                 st.error("Image not found")
 
