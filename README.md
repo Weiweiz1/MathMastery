@@ -1,28 +1,21 @@
-# Mistake Mastery Engine
+# ✨ Math and Thinking Skills Engine
 
-A local Python application to help children practice primary school math by learning from their mistakes. Built for NSW OC and selective placement preparation.
+A simple, fast practice app to help children prepare for NSW OC and Selective School tests by learning from their mistakes.
 
 ## Features
 
-- **Image-based questions**: Upload screenshots of math problems
-- **Practice Mode**: Quiz with score tracking
-- **Learning Mode**: Kid answers first, parent verifies and saves correct answers
-- **Topic filtering**: Organize questions by topic/source
-- **Progress tracking**: Track correct/incorrect attempts per question
-- **Text-only mode**: Hide images for clean retakes (no spoilers)
+- **OC Test Countdown** - Shows days remaining until test day
+- **Image-based questions** - Upload screenshots of wrong answers
+- **Learning Mode** - Kid answers first, parent verifies and saves correct answer
+- **Practice Mode** - Quiz against saved answers
+- **Topic filtering** - Organize by test/source
+- **Fast navigation** - Jump to any question instantly
 
-## Screenshot
-
-The app has 3 tabs:
-1. **Add Questions** - Upload images and enter answers
-2. **Manage** - Edit questions, answers, and topics
-3. **Practice** - Quiz mode with score tracking
-
-## Installation
+## Quick Start
 
 ```bash
 # Clone the repo
-git clone https://github.com/YOUR_USERNAME/MathMastery.git
+git clone https://github.com/Weiweiz1/MathMastery.git
 cd MathMastery
 
 # Create virtual environment
@@ -33,41 +26,46 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Run the app
-streamlit run app.py
+streamlit run practice.py
 ```
 
-## Usage
+Then open **http://localhost:8501**
+
+## How to Use
 
 ### Adding Questions
-1. Go to **Add Questions** tab
-2. Drag & drop screenshot images
-3. Enter correct answer (required)
-4. Optionally add question text and topic
-5. Click **Save All**
+Drop screenshot images into the `inbox/` folder, then run:
+```python
+# Quick import script (run in Python)
+import json, os, shutil, hashlib
+from datetime import datetime
+
+# ... (see repo for full import script)
+```
+
+Or contact me for the import helper.
 
 ### Learning Mode (New Questions)
-1. Go to **Practice** tab
-2. Select **"Learning (no answers yet)"**
-3. Kid types their answer
-4. Parent clicks:
-   - ✅ **Kid is CORRECT** - saves kid's answer
-   - ❌ **Kid is WRONG** - parent enters correct answer
+1. Select **"Learning (no answer)"** in sidebar
+2. Kid types their answer
+3. Parent clicks:
+   - **✅ Correct** - saves kid's answer as correct
+   - **💾 Save** - enter and save the correct answer
 
 ### Practice Mode
-1. Go to **Practice** tab
-2. Select **"Practice (has answers)"**
-3. Kid answers questions
-4. App checks against saved answers
+1. Select **"Practice (has answer)"** in sidebar
+2. Kid answers questions
+3. Click **Check** to verify
 
 ## File Structure
 
 ```
 /MathMastery
-├── app.py              # Streamlit UI
+├── practice.py         # Main Streamlit app
+├── requirements.txt    # Python dependencies
 ├── mistakes_db.json    # Question database (gitignored)
 ├── vault/              # Stored images (gitignored)
-├── inbox/              # Drop new images here (gitignored)
-└── requirements.txt    # Python dependencies
+└── inbox/              # Drop new images here (gitignored)
 ```
 
 ## Tech Stack
