@@ -31,6 +31,16 @@ streamlit run practice.py
 
 Then open **http://localhost:8501**
 
+## Run the App (Daily Start)
+
+```bash
+cd /Users/WZ/Documents/MathMastery
+source venv/bin/activate
+streamlit run practice.py
+```
+
+Then open **http://localhost:8501** in your browser.
+
 ## How to Use
 
 ### Adding Questions

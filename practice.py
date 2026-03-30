@@ -113,6 +113,28 @@ if st.session_state.mode == 'setup':
             st.rerun()
 
     st.divider()
+
+    # === TOPIC OVERVIEW ===
+    st.header("📊 Topic Overview")
+    topic_questions = {}
+    for q in active_questions:
+        t = q.get('topic', 'No Topic')
+        if t not in topic_questions:
+            topic_questions[t] = []
+        topic_questions[t].append(q)
+
+    for t in sorted(topic_questions.keys()):
+        qs = topic_questions[t]
+        practiced = [q for q in qs if q.get('times_practiced', 0) > 0]
+        not_practiced = [q for q in qs if q.get('times_practiced', 0) == 0]
+        done = len(not_practiced) == 0
+        icon = "✅" if done else "⬜"
+
+        with st.expander(f"{icon} **{t}** — {len(practiced)}/{len(qs)} done ({len(not_practiced)} remaining)"):
+            for q in qs:
+                q_icon = "✅" if q.get('times_practiced', 0) > 0 else "⬜"
+                st.write(f"{q_icon} {q['id']}")
+
     st.caption(f"Total active questions: {len(active_questions)}")
 
 # ==================== QUIZ MODE ====================
