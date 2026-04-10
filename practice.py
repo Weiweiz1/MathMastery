@@ -89,16 +89,30 @@ if st.session_state.mode == 'setup':
     with col1:
         st.subheader("Option A: By Topic")
         selected_topic = st.selectbox("Select topic:", [""] + topics)
-        if selected_topic and st.button("▶️ Start Topic Quiz", type="primary"):
-            questions = [q for q in active_questions if q.get('topic', 'No Topic') == selected_topic]
-            if questions:
-                st.session_state.quiz_questions = questions
-                st.session_state.quiz_index = 0
-                st.session_state.quiz_answers = {}
-                st.session_state.mode = 'quiz'
-                st.rerun()
-            else:
-                st.warning("No questions in this topic")
+        if selected_topic:
+            topic_qs = [q for q in active_questions if q.get('topic', 'No Topic') == selected_topic]
+            undone_qs = [q for q in topic_qs if q.get('times_practiced', 0) == 0]
+            st.caption(f"{len(topic_qs)} total, {len(undone_qs)} not done")
+
+            bcol1, bcol2 = st.columns(2)
+            with bcol1:
+                if st.button("▶️ All Questions", type="primary"):
+                    if topic_qs:
+                        st.session_state.quiz_questions = topic_qs
+                        st.session_state.quiz_index = 0
+                        st.session_state.quiz_answers = {}
+                        st.session_state.mode = 'quiz'
+                        st.rerun()
+            with bcol2:
+                if undone_qs:
+                    if st.button("⏩ Continue Undone"):
+                        st.session_state.quiz_questions = undone_qs
+                        st.session_state.quiz_index = 0
+                        st.session_state.quiz_answers = {}
+                        st.session_state.mode = 'quiz'
+                        st.rerun()
+                else:
+                    st.success("All done! ✅")
 
     with col2:
         st.subheader("Option B: Random Questions")
