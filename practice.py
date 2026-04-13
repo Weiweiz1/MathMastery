@@ -221,14 +221,39 @@ elif st.session_state.mode == 'review':
         st.warning("No quiz to review. Start a new quiz.")
         st.stop()
 
-    st.write(f"**Reviewing {len(questions)} questions**")
+    # Categorize questions
+    wrong_qs = []
+    correct_qs = []
+    no_answer_qs = []
+    for q in questions:
+        kid_answer = answers.get(q['id'], "")
+        correct_answer = q.get('answer', '')
+        if not correct_answer:
+            no_answer_qs.append(q)
+        elif kid_answer.lower().strip() == correct_answer.lower().strip():
+            correct_qs.append(q)
+        else:
+            wrong_qs.append(q)
+
+    st.write(f"**{len(questions)} questions: ✅ {len(correct_qs)} correct, ❌ {len(wrong_qs)} wrong, ❓ {len(no_answer_qs)} no answer saved**")
+
+    review_filter = st.radio("Show:", ["All", "Wrong Only", "Correct Only", "No Answer Only"], horizontal=True)
+    if review_filter == "Wrong Only":
+        filtered_questions = wrong_qs
+    elif review_filter == "Correct Only":
+        filtered_questions = correct_qs
+    elif review_filter == "No Answer Only":
+        filtered_questions = no_answer_qs
+    else:
+        filtered_questions = questions
+
     st.divider()
 
     # Reload DB for saving
     db = load_db()
     changes_made = False
 
-    for i, q in enumerate(questions):
+    for i, q in enumerate(filtered_questions):
         q_id = q['id']
         kid_answer = answers.get(q_id, "")
         correct_answer = q.get('answer', '')
@@ -308,11 +333,20 @@ elif st.session_state.mode == 'review':
         save_db(db)
 
     st.divider()
-    if st.button("🏠 Back to Setup", type="primary"):
-        st.session_state.mode = 'setup'
-        st.session_state.quiz_questions = []
-        st.session_state.quiz_answers = {}
-        st.rerun()
+    col_back, col_redo = st.columns(2)
+    with col_back:
+        if st.button("🏠 Back to Setup", type="primary"):
+            st.session_state.mode = 'setup'
+            st.session_state.quiz_questions = []
+            st.session_state.quiz_answers = {}
+            st.rerun()
+    with col_redo:
+        if wrong_qs and st.button(f"🔄 Redo {len(wrong_qs)} Wrong Questions"):
+            st.session_state.quiz_questions = wrong_qs
+            st.session_state.quiz_index = 0
+            st.session_state.quiz_answers = {}
+            st.session_state.mode = 'quiz'
+            st.rerun()
 
 # ==================== MANAGE MODE ====================
 elif st.session_state.mode == 'manage':
