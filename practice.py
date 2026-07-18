@@ -9,7 +9,19 @@ st.set_page_config(page_title="Math & Thinking Skills Engine", page_icon="⭐", 
 
 # === CONFIG ===
 DB_FILE = "mistakes_db.json"
-OC_TEST_DATE = date(2026, 5, 8)
+SELECTIVE_TEST_DATE = date(2028, 5, 7)
+
+TOPIC_CATEGORIES = [
+    "Numbers and Calculation",
+    "Factors, Multiples and Remainders",
+    "Patterns",
+    "Areas and Volume",
+    "Time, Distance and Speed",
+    "Rate and Percentage",
+    "Graph, Geometry and Spatial",
+    "Temperature, Mass and Length",
+    "Problem Solving",
+]
 
 # === DATABASE ===
 def load_db():
@@ -29,26 +41,25 @@ def get_question_by_id(db, q_id):
     return None
 
 # === HEADER ===
-days_left = (OC_TEST_DATE - date.today()).days
+days_left = (SELECTIVE_TEST_DATE - date.today()).days
 st.markdown("<h1 style='text-align: center;'>✨ Math and Thinking Skills Engine</h1>", unsafe_allow_html=True)
 if days_left > 0:
-    st.markdown(f"<h3 style='text-align: center;'>⏰ <b>{days_left} days</b> until OC Test (8 May 2026)</h3>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='text-align: center;'>⏰ <b>{days_left} days</b> until Selective Test (7 May 2028)</h3>", unsafe_allow_html=True)
 st.divider()
 
 # === SESSION STATE INIT ===
 if 'mode' not in st.session_state:
-    st.session_state.mode = 'setup'  # setup, quiz, review, manage
+    st.session_state.mode = 'setup'
 if 'quiz_questions' not in st.session_state:
     st.session_state.quiz_questions = []
 if 'quiz_index' not in st.session_state:
     st.session_state.quiz_index = 0
 if 'quiz_answers' not in st.session_state:
-    st.session_state.quiz_answers = {}  # {question_id: kid_answer}
+    st.session_state.quiz_answers = {}
 
 # === LOAD DATA ===
 db = load_db()
 
-# Filter active questions (not archived/deleted)
 active_questions = [q for q in db if q.get('status', 'active') == 'active']
 mastered_questions = [q for q in db if q.get('status') == 'mastered']
 
@@ -58,7 +69,6 @@ st.sidebar.metric("Active Questions", len(active_questions))
 st.sidebar.metric("Mastered", len(mastered_questions))
 st.sidebar.divider()
 
-# Mode buttons in sidebar
 st.sidebar.header("Menu")
 if st.sidebar.button("🏠 New Quiz", use_container_width=True):
     st.session_state.mode = 'setup'
@@ -79,52 +89,73 @@ if st.sidebar.button("📦 View Mastered", use_container_width=True):
 if st.session_state.mode == 'setup':
     st.header("🎯 Setup Quiz")
 
-    # Get topics
-    topics = sorted(set(q.get('topic', 'No Topic') for q in active_questions))
+    topics = sorted(set(q.get('topic', '') for q in active_questions if q.get('topic', '')))
+    sources = sorted(set(q.get('source', '') for q in active_questions if q.get('source', '')))
 
     st.write("**Choose ONE option:**")
 
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("Option A: By Topic")
-        selected_topic = st.selectbox("Select topic:", [""] + topics)
-        if selected_topic:
-            topic_qs = [q for q in active_questions if q.get('topic', 'No Topic') == selected_topic]
-            undone_qs = [q for q in topic_qs if q.get('times_practiced', 0) == 0]
-            st.caption(f"{len(topic_qs)} total, {len(undone_qs)} not done")
+        st.subheader("Option A: Filter & Play")
 
-            bcol1, bcol2 = st.columns(2)
-            with bcol1:
-                if st.button("▶️ All Questions", type="primary"):
-                    if topic_qs:
-                        st.session_state.quiz_questions = topic_qs
-                        st.session_state.quiz_index = 0
-                        st.session_state.quiz_answers = {}
-                        st.session_state.mode = 'quiz'
-                        st.rerun()
-            with bcol2:
-                if undone_qs:
-                    if st.button("⏩ Continue Undone"):
-                        st.session_state.quiz_questions = undone_qs
-                        st.session_state.quiz_index = 0
-                        st.session_state.quiz_answers = {}
-                        st.session_state.mode = 'quiz'
-                        st.rerun()
-                else:
-                    st.success("All done! ✅")
+        selected_topic = st.selectbox("Filter by topic:", ["All"] + topics)
+        selected_source = st.selectbox("Filter by source:", ["All"] + sources)
+
+        filtered_qs = active_questions
+        if selected_topic != "All":
+            filtered_qs = [q for q in filtered_qs if q.get('topic', '') == selected_topic]
+        if selected_source != "All":
+            filtered_qs = [q for q in filtered_qs if q.get('source', '') == selected_source]
+
+        undone_qs = [q for q in filtered_qs if q.get('times_practiced', 0) == 0]
+        wrong_qs = [q for q in filtered_qs if q.get('times_practiced', 0) > q.get('times_correct', 0)]
+        uncategorized_qs = [q for q in filtered_qs if not q.get('topic', '')]
+
+        st.caption(f"{len(filtered_qs)} total, {len(undone_qs)} not done, {len(wrong_qs)} previously wrong, {len(uncategorized_qs)} uncategorized")
+
+        bcol1, bcol2, bcol3 = st.columns(3)
+        with bcol1:
+            if st.button("▶️ All Questions", type="primary"):
+                if filtered_qs:
+                    st.session_state.quiz_questions = filtered_qs
+                    st.session_state.quiz_index = 0
+                    st.session_state.quiz_answers = {}
+                    st.session_state.mode = 'quiz'
+                    st.rerun()
+        with bcol2:
+            if undone_qs:
+                if st.button("⏩ Continue Undone"):
+                    st.session_state.quiz_questions = undone_qs
+                    st.session_state.quiz_index = 0
+                    st.session_state.quiz_answers = {}
+                    st.session_state.mode = 'quiz'
+                    st.rerun()
+            else:
+                st.success("All done! ✅")
+        with bcol3:
+            if wrong_qs:
+                if st.button(f"🔄 Redo Wrong ({len(wrong_qs)})"):
+                    st.session_state.quiz_questions = wrong_qs
+                    st.session_state.quiz_index = 0
+                    st.session_state.quiz_answers = {}
+                    st.session_state.mode = 'quiz'
+                    st.rerun()
 
     with col2:
         st.subheader("Option B: Random Questions")
         max_q = len(active_questions)
-        num_questions = st.number_input("How many questions?", 1, max_q, min(10, max_q))
-        if st.button("▶️ Start Random Quiz", type="primary"):
-            questions = random.sample(active_questions, min(num_questions, len(active_questions)))
-            st.session_state.quiz_questions = questions
-            st.session_state.quiz_index = 0
-            st.session_state.quiz_answers = {}
-            st.session_state.mode = 'quiz'
-            st.rerun()
+        if max_q > 0:
+            num_questions = st.number_input("How many questions?", 1, max_q, min(10, max_q))
+            if st.button("▶️ Start Random Quiz", type="primary"):
+                questions = random.sample(active_questions, min(num_questions, len(active_questions)))
+                st.session_state.quiz_questions = questions
+                st.session_state.quiz_index = 0
+                st.session_state.quiz_answers = {}
+                st.session_state.mode = 'quiz'
+                st.rerun()
+        else:
+            st.info("No active questions yet. Import some!")
 
     st.divider()
 
@@ -132,7 +163,7 @@ if st.session_state.mode == 'setup':
     st.header("📊 Topic Overview")
     topic_questions = {}
     for q in active_questions:
-        t = q.get('topic', 'No Topic')
+        t = q.get('topic', '') or '(Uncategorized)'
         if t not in topic_questions:
             topic_questions[t] = []
         topic_questions[t].append(q)
@@ -141,13 +172,17 @@ if st.session_state.mode == 'setup':
         qs = topic_questions[t]
         practiced = [q for q in qs if q.get('times_practiced', 0) > 0]
         not_practiced = [q for q in qs if q.get('times_practiced', 0) == 0]
+        wrong = [q for q in qs if q.get('times_practiced', 0) > q.get('times_correct', 0)]
         done = len(not_practiced) == 0
         icon = "✅" if done else "⬜"
+        alert = " ❗" if wrong else ""
 
-        with st.expander(f"{icon} **{t}** — {len(practiced)}/{len(qs)} done ({len(not_practiced)} remaining)"):
+        with st.expander(f"{icon} **{t}**{alert} — {len(practiced)}/{len(qs)} done ({len(not_practiced)} remaining)"):
             for q in qs:
                 q_icon = "✅" if q.get('times_practiced', 0) > 0 else "⬜"
-                st.write(f"{q_icon} {q['id']}")
+                q_wrong = " ❗" if q.get('times_practiced', 0) > q.get('times_correct', 0) else ""
+                source_label = f" [{q.get('source', '')}]" if q.get('source', '') else ""
+                st.write(f"{q_icon} {q['id']}{q_wrong}{source_label}")
 
     st.caption(f"Total active questions: {len(active_questions)}")
 
@@ -163,35 +198,35 @@ elif st.session_state.mode == 'quiz':
     current = questions[idx]
     q_id = current['id']
 
-    # Progress
     st.progress((idx + 1) / len(questions))
     st.write(f"**Question {idx + 1} of {len(questions)}**")
 
-    # Wrong count
     times_practiced = current.get('times_practiced', 0)
     times_correct = current.get('times_correct', 0)
     times_wrong = times_practiced - times_correct
     if times_wrong > 0:
         st.warning(f"⚠️ Previously wrong: {times_wrong} time(s)")
 
-    # Show image
     if os.path.exists(current['file_path']):
         st.image(current['file_path'], use_container_width=True)
     else:
         st.error("Image not found")
 
-    st.caption(f"Topic: {current.get('topic', 'No Topic')}")
+    labels = []
+    if current.get('topic', ''):
+        labels.append(f"Topic: {current['topic']}")
+    if current.get('source', ''):
+        labels.append(f"Source: {current['source']}")
+    if labels:
+        st.caption(" | ".join(labels))
     st.divider()
 
-    # Answer input - use question ID as key to clear on navigation
     saved_answer = st.session_state.quiz_answers.get(q_id, "")
     kid_answer = st.text_input("Your answer:", value=saved_answer, key=f"answer_{q_id}")
 
-    # Auto-save answer to session
     if kid_answer != saved_answer:
         st.session_state.quiz_answers[q_id] = kid_answer
 
-    # Navigation
     col1, col2, col3 = st.columns([1, 1, 1])
 
     with col1:
@@ -221,7 +256,6 @@ elif st.session_state.mode == 'review':
         st.warning("No quiz to review. Start a new quiz.")
         st.stop()
 
-    # Categorize questions
     wrong_qs = []
     correct_qs = []
     no_answer_qs = []
@@ -249,7 +283,6 @@ elif st.session_state.mode == 'review':
 
     st.divider()
 
-    # Reload DB for saving
     db = load_db()
     changes_made = False
 
@@ -258,19 +291,17 @@ elif st.session_state.mode == 'review':
         kid_answer = answers.get(q_id, "")
         correct_answer = q.get('answer', '')
 
-        # Get fresh data from db
         db_item = get_question_by_id(db, q_id)
         if not db_item:
             continue
 
-        with st.expander(f"Q{i+1}: {q.get('topic', 'No Topic')} | Kid's answer: **{kid_answer or '(empty)'}**", expanded=True):
+        with st.expander(f"Q{i+1}: {q.get('topic', '') or q.get('source', '')} | Kid's answer: **{kid_answer or '(empty)'}**", expanded=True):
             col1, col2 = st.columns([1, 1])
 
             with col1:
                 if os.path.exists(q['file_path']):
                     st.image(q['file_path'], width=400)
 
-                # Wrong count
                 times_wrong = db_item.get('times_practiced', 0) - db_item.get('times_correct', 0)
                 st.caption(f"Previously wrong: {times_wrong} time(s)")
 
@@ -279,10 +310,8 @@ elif st.session_state.mode == 'review':
 
                 if correct_answer:
                     st.write(f"**Saved answer:** {correct_answer}")
-                    # Check if correct
                     if kid_answer.lower().strip() == correct_answer.lower().strip():
                         st.success("✅ Correct!")
-                        # Update stats
                         db_item['times_practiced'] = db_item.get('times_practiced', 0) + 1
                         db_item['times_correct'] = db_item.get('times_correct', 0) + 1
                         changes_made = True
@@ -293,7 +322,6 @@ elif st.session_state.mode == 'review':
                 else:
                     st.info("No correct answer saved yet")
 
-                    # Parent enters correct answer
                     col_a, col_b = st.columns(2)
                     with col_a:
                         if kid_answer and st.button(f"✅ Kid is correct", key=f"correct_{q_id}"):
@@ -314,6 +342,18 @@ elif st.session_state.mode == 'review':
 
                 st.divider()
 
+                # Assign topic
+                current_topic = db_item.get('topic', '')
+                new_topic = st.selectbox(
+                    "Topic:",
+                    [""] + TOPIC_CATEGORIES,
+                    index=(TOPIC_CATEGORIES.index(current_topic) + 1) if current_topic in TOPIC_CATEGORIES else 0,
+                    key=f"topic_{q_id}"
+                )
+                if new_topic != current_topic:
+                    db_item['topic'] = new_topic
+                    changes_made = True
+
                 # Actions
                 col_arch, col_del = st.columns(2)
                 with col_arch:
@@ -328,7 +368,6 @@ elif st.session_state.mode == 'review':
                         changes_made = True
                         st.success("Deleted")
 
-    # Save all changes
     if changes_made:
         save_db(db)
 
@@ -352,14 +391,22 @@ elif st.session_state.mode == 'review':
 elif st.session_state.mode == 'manage':
     st.header("📋 Manage Questions")
 
-    # Filter
-    topics = sorted(set(q.get('topic', 'No Topic') for q in active_questions))
-    selected_topic = st.selectbox("Filter by topic:", ["All"] + topics)
+    col_f1, col_f2 = st.columns(2)
+    topics = sorted(set(q.get('topic', '') for q in active_questions if q.get('topic', '')))
+    sources = sorted(set(q.get('source', '') for q in active_questions if q.get('source', '')))
 
-    if selected_topic == "All":
-        filtered = active_questions
-    else:
-        filtered = [q for q in active_questions if q.get('topic', 'No Topic') == selected_topic]
+    with col_f1:
+        selected_topic = st.selectbox("Filter by topic:", ["All", "(Uncategorized)"] + topics)
+    with col_f2:
+        selected_source = st.selectbox("Filter by source:", ["All"] + sources)
+
+    filtered = active_questions
+    if selected_topic == "(Uncategorized)":
+        filtered = [q for q in filtered if not q.get('topic', '')]
+    elif selected_topic != "All":
+        filtered = [q for q in filtered if q.get('topic', '') == selected_topic]
+    if selected_source != "All":
+        filtered = [q for q in filtered if q.get('source', '') == selected_source]
 
     st.write(f"**{len(filtered)} questions**")
 
@@ -372,8 +419,10 @@ elif st.session_state.mode == 'manage':
             continue
 
         times_wrong = db_item.get('times_practiced', 0) - db_item.get('times_correct', 0)
+        topic_label = db_item.get('topic', '') or '(Uncategorized)'
+        source_label = db_item.get('source', '')
 
-        with st.expander(f"{q_id} | {q.get('topic', '')} | Wrong: {times_wrong}x"):
+        with st.expander(f"{q_id} | {topic_label} | Source: {source_label} | Wrong: {times_wrong}x"):
             col1, col2 = st.columns([1, 1])
 
             with col1:
@@ -389,10 +438,25 @@ elif st.session_state.mode == 'manage':
                 # Edit answer
                 new_ans = st.text_input("Edit answer:", value=q.get('answer', ''), key=f"edit_{q_id}")
                 if new_ans != q.get('answer', ''):
-                    if st.button("💾 Save", key=f"saveedit_{q_id}"):
+                    if st.button("💾 Save Answer", key=f"saveedit_{q_id}"):
                         db_item['answer'] = new_ans
                         save_db(db)
                         st.success("Saved!")
+                        st.rerun()
+
+                # Assign topic
+                current_topic = db_item.get('topic', '')
+                new_topic = st.selectbox(
+                    "Topic:",
+                    [""] + TOPIC_CATEGORIES,
+                    index=(TOPIC_CATEGORIES.index(current_topic) + 1) if current_topic in TOPIC_CATEGORIES else 0,
+                    key=f"topic_{q_id}"
+                )
+                if new_topic != current_topic:
+                    if st.button("💾 Save Topic", key=f"savetopic_{q_id}"):
+                        db_item['topic'] = new_topic
+                        save_db(db)
+                        st.success(f"Topic set to: {new_topic}")
                         st.rerun()
 
                 col_a, col_b = st.columns(2)
@@ -424,7 +488,7 @@ elif st.session_state.mode == 'mastered':
             q_id = q['id']
             db_item = get_question_by_id(db, q_id)
 
-            with st.expander(f"{q_id} | {q.get('topic', '')}"):
+            with st.expander(f"{q_id} | {q.get('topic', '') or q.get('source', '')}"):
                 col1, col2 = st.columns([1, 1])
 
                 with col1:

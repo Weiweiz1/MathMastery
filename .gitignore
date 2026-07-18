@@ -13,6 +13,12 @@ inbox/*
 # Database (contains personal data)
 mistakes_db.json
 
+# Archived OC data
+archived_oc/
+
+# Personal notes
+周期_读书笔记.md
+
 # OS
 .DS_Store
 
