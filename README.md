@@ -1,81 +1,60 @@
-# ✨ Math and Thinking Skills Engine
+# ⭐ MathMastery Hub
 
-A simple, fast practice app to help children prepare for NSW OC and Selective School tests by learning from their mistakes.
+A simple practice app that helps a child prepare for the NSW Selective School test by learning from their mistakes. Wrong questions come back at growing intervals until they stick.
 
 ## Features
 
-- **OC Test Countdown** - Shows days remaining until test day
-- **Image-based questions** - Upload screenshots of wrong answers
-- **Learning Mode** - Kid answers first, parent verifies and saves correct answer
-- **Practice Mode** - Quiz against saved answers
-- **Topic filtering** - Organize by test/source
-- **Fast navigation** - Jump to any question instantly
+- **Today's practice**: one button. The app picks the questions: overdue reviews first, then reviews due today, then new questions, up to a daily amount.
+- **Answer all, check at the end**: the child answers every question, submits, then sees ✓/✗, the correct answer and an optional explanation.
+- **Review schedule**: a correct answer brings the question back after 1 → 3 → 7 → 14 → 30 days, then it's Mastered. A wrong answer brings it back tomorrow.
+- **Questions to explain**: questions answered wrong 2+ times after review are flagged for a parent to explain.
+- **Add Questions page**: drag in screenshots and set the topic, answer and explanation in the app.
+- **Parent Report**: % mastered, days practised, reviews due, top 3 weak topics by miss rate, "what to do next" advice, and the full question list for editing.
+- **Selective test countdown** (7 May 2028).
 
 ## Quick Start
 
 ```bash
-# Clone the repo
 git clone https://github.com/Weiweiz1/MathMastery.git
 cd MathMastery
-
-# Create virtual environment
 python3 -m venv venv
 source venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Run the app
 streamlit run practice.py
 ```
 
-Then open **http://localhost:8501**
+Then open **http://localhost:8501**.
 
-## Run the App (Daily Start)
+## Daily Start
 
 ```bash
-cd /Users/WZ/Documents/MathMastery
+cd /Users/WZ/Documents/Projects/MathMastery
 source venv/bin/activate
 streamlit run practice.py
 ```
-
-Then open **http://localhost:8501** in your browser.
 
 ## How to Use
 
-### Adding Questions
-Drop screenshot images into the `inbox/` folder, then run:
-```python
-# Quick import script (run in Python)
-import json, os, shutil, hashlib
-from datetime import datetime
+1. **Add questions** (parent): open **➕ Add Questions**, drop in screenshots, choose a topic, type the answer, and press **Save**. Questions without an answer can still be saved; you'll be asked to check the child's answer after practice.
+2. **Practise** (child): on **🏠 Today**, press **Start today's practice**, answer every question, then **Submit answers**.
+3. **Check progress** (parent): open **📊 Parent Report**. The daily question count is set at the bottom of that page.
 
-# ... (see repo for full import script)
-```
+Settings such as the student name, test date and review intervals are at the top of `practice.py`.
 
-Or contact me for the import helper.
-
-### Learning Mode (New Questions)
-1. Select **"Learning (no answer)"** in sidebar
-2. Kid types their answer
-3. Parent clicks:
-   - **✅ Correct** - saves kid's answer as correct
-   - **💾 Save** - enter and save the correct answer
-
-### Practice Mode
-1. Select **"Practice (has answer)"** in sidebar
-2. Kid answers questions
-3. Click **Check** to verify
+Bulk import from folders is still possible with `python import_new.py`.
 
 ## File Structure
 
 ```
 /MathMastery
-├── practice.py         # Main Streamlit app
+├── practice.py         # The Streamlit app
+├── import_new.py       # Optional bulk import from folders
 ├── requirements.txt    # Python dependencies
-├── mistakes_db.json    # Question database (gitignored)
-├── vault/              # Stored images (gitignored)
-└── inbox/              # Drop new images here (gitignored)
+├── mistakes_db.json    # Questions and review schedule (gitignored)
+├── practice_log.json   # Every answer: date, question, right/wrong (gitignored)
+├── settings.json       # Questions per day (gitignored)
+├── vault/              # Stored question images (gitignored)
+└── inbox/              # Imported source images (gitignored)
 ```
 
 ## Tech Stack

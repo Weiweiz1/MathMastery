@@ -12,6 +12,8 @@ inbox/*
 
 # Database (contains personal data)
 mistakes_db.json
+practice_log.json
+settings.json
 
 # Archived OC data
 archived_oc/
