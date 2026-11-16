@@ -3,9 +3,12 @@ import json
 import os
 import html
 import hashlib
+import re
 from datetime import datetime, date, timedelta
+from pilead_import import import_export
+from tools.make_bookmarklet import bookmarklet
 
-st.set_page_config(page_title="MathMastery Hub", page_icon="⭐", layout="wide")
+st.set_page_config(page_title="MathMastery Hub", page_icon="⭐", layout="wide", initial_sidebar_state="expanded")
 
 # === CONFIG ===
 DB_FILE = "mistakes_db.json"
@@ -157,11 +160,81 @@ def start_practice(questions):
     st.rerun()
 
 
-def show_image(q):
-    if os.path.exists(q.get('file_path', '')):
+IMG_RE = re.compile(r"!\[[^\]]*\]\(([^)\s]+)\)")
+
+
+def md_math(text):
+    """Pi-Lead writes maths with backslash-bracket or dollar delimiters, and '$' also means money.
+    Convert maths to Streamlit's $...$ and escape dollar signs used for money."""
+    text = re.sub(r"\\\[(.+?)\\\]", lambda m: "$$" + m.group(1) + "$$", text, flags=re.S)
+    text = re.sub(r"\\\((.+?)\\\)", lambda m: "\x00" + m.group(1) + "\x00", text, flags=re.S)
+
+    # Pair up single $ signs in order: a pair wrapping LaTeX is maths, anything else is money
+    signs = [m.start() for m in re.finditer(r"(?<![\\$])\$(?!\$)", text)]
+    money, i = set(), 0
+    while i < len(signs):
+        if i + 1 < len(signs) and re.search(r"[\\^_{}]", text[signs[i] + 1:signs[i + 1]]):
+            i += 2
+        else:
+            money.add(signs[i])
+            i += 1
+    text = "".join("\\$" if k in money else c for k, c in enumerate(text))
+    text = text.replace("\x00", "$")
+    return re.sub(r"\\frac(?=\s*\{)", r"\\dfrac", text)  # full-size fractions are easier to read
+
+
+TABLE_GAP_RE = re.compile(r"(^\s*\|[^\n]*\|\s*)\n\s*\n(?=\s*\|)", re.M)
+
+
+def render_md(text):
+    """Markdown with maths; pictures saved in vault/ are shown with st.image."""
+    # Pi-Lead puts blank lines between table rows, which breaks markdown tables
+    prev = None
+    while prev != text:
+        prev, text = text, TABLE_GAP_RE.sub(r"\1\n", text or "")
+    pos = 0
+    for m in IMG_RE.finditer(text or ""):
+        chunk = text[pos:m.start()].strip()
+        if chunk:
+            st.markdown(md_math(chunk))
+        if os.path.exists(m.group(1)):
+            st.image(m.group(1))
+        pos = m.end()
+    rest = (text or "")[pos:].strip()
+    if rest:
+        st.markdown(md_math(rest))
+
+
+def show_question(q):
+    if q.get('file_path') and os.path.exists(q['file_path']):
         st.image(q['file_path'], width="stretch")
+    elif q.get('question_md'):
+        render_md(q['question_md'])
     else:
-        st.error("Image not found")
+        st.error("Question not found")
+
+
+def show_explanation(q):
+    if q.get('explanation'):
+        with st.container(border=True):
+            st.markdown("**💡 Explanation**")
+            render_md(q['explanation'])
+
+
+def answer_text(q):
+    return q.get('answer_display') or q.get('answer', '')
+
+
+def topic_of(q):
+    return q.get('topic', '') or 'Uncategorized'
+
+
+def topics_in_use(questions):
+    """Topics that have questions, most questions first."""
+    counts = {}
+    for q in questions:
+        counts[topic_of(q)] = counts.get(topic_of(q), 0) + 1
+    return sorted(counts, key=lambda t: (-counts[t], t)), counts
 
 
 # === STYLE (modelled on the Pi-Lead hub) ===
@@ -178,7 +251,7 @@ html, body, [class*="css"], .stApp, .stMarkdown, button, input, select, textarea
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
 }
 .stApp { background: #ffffff; }
-#MainMenu, footer, [data-testid="stToolbar"] { visibility: hidden; }
+#MainMenu, footer, [data-testid="stAppDeployButton"] { display: none; }
 .block-container { padding-top: 2.2rem; max-width: 1180px; }
 
 /* Sidebar */
@@ -195,6 +268,10 @@ section[data-testid="stSidebar"] { background: #ffffff; border-right: 1px solid 
 [class*="st-key-nav_"] button > div, [class*="st-key-nav_"] button p {
   justify-content: flex-start; text-align: left; width: 100%; font-size: 15px; }
 [class*="st-key-nav_"] button:hover { background: var(--green-soft); color: var(--green-dark); }
+.st-key-topnav { gap: 8px; margin: -6px 0 14px; }
+.st-key-topnav button { border-radius: 999px; padding: 4px 16px; font-weight: 600; border: 1px solid var(--line); }
+.st-key-topnav button[kind="primary"] { background: var(--green); border-color: var(--green); color: #fff; }
+.st-key-topnav button[kind="secondary"]:hover { border-color: var(--green); color: var(--green-dark); }
 .week-card { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-top: 24px; }
 .week-title { font-weight: 700; color: var(--green-dark); font-size: 14px; margin-bottom: 8px; }
 .week-row { display: flex; justify-content: space-between; font-size: 13px; color: #374151; margin: 6px 0; }
@@ -357,6 +434,13 @@ st.markdown(f"""
   <div class='head-right'>{countdown}<div class='avatar'>{html.escape(STUDENT_NAME[:1])}</div></div>
 </div>""", unsafe_allow_html=True)
 
+# Same pages along the top, so navigation works even when the sidebar is closed
+with st.container(key="topnav", horizontal=True):
+    for key, label, _ in NAV:
+        if st.button(label, key=f"top_{key}", type="primary" if key == active_nav else "secondary"):
+            st.session_state.mode = key
+            st.rerun()
+
 
 # ==================== TODAY ====================
 if st.session_state.mode == 'today':
@@ -410,22 +494,18 @@ if st.session_state.mode == 'today':
               <div class='card-title b'>Practise a Topic</div>
               <div class='card-desc'>Want extra practice? Pick one topic.</div>
             </div><div class='card-art'>🎯</div></div>""", unsafe_allow_html=True)
-            topic_counts = {}
-            for q in active:
-                t = q.get('topic', '') or 'Uncategorized'
-                topic_counts[t] = topic_counts.get(t, 0) + 1
-            topic_options = [t for t in TOPIC_CATEGORIES + ['Uncategorized'] if t in topic_counts]
+            topic_options, topic_counts = topics_in_use(active)
             pick = st.selectbox("Topic", topic_options, label_visibility="collapsed",
                                 format_func=lambda t: f"{t} ({topic_counts[t]})", placeholder="No topics yet")
             if st.button("Start topic practice", key="start_topic", width="stretch", disabled=not pick):
-                qs = [q for q in active if (q.get('topic', '') or 'Uncategorized') == pick]
+                qs = [q for q in active if topic_of(q) == pick]
                 qs.sort(key=lambda q: (not is_due(q), q.get('created', '')))
                 start_practice(qs[:daily_target])
 
         with st.container(key="card_progress"):
             rows = []
-            for t in TOPIC_CATEGORIES:
-                qs = [q for q in active + mastered if q.get('topic') == t]
+            for t in topics_in_use(active + mastered)[0][:10]:
+                qs = [q for q in active + mastered if topic_of(q) == t]
                 m = sum(1 for q in qs if state(q) == 'mastered')
                 width = int(m / len(qs) * 100) if qs else 0
                 rows.append(f"<div class='tp-row'><span>{html.escape(t)}</span>"
@@ -457,11 +537,13 @@ elif st.session_state.mode == 'quiz':
 
     st.progress((idx + 1) / len(questions))
     st.markdown(f"**Question {idx + 1} of {len(questions)}**")
-    show_image(q)
+    show_question(q)
     if q.get('topic'):
         st.caption(q['topic'])
 
-    answers[q['id']] = st.text_input("Your answer", value=answers.get(q['id'], ""),
+    is_mc = bool(re.fullmatch(r"[A-E]", q.get('answer', '')))
+    answers[q['id']] = st.text_input("Your answer" + (" (type the letter A–E)" if is_mc else ""),
+                                     value=answers.get(q['id'], ""),
                                      key=f"ans_{st.session_state.quiz_token}_{q['id']}")
 
     c1, _, c3 = st.columns([1, 2, 1])
@@ -519,7 +601,7 @@ elif st.session_state.mode == 'results':
         with st.container(border=True):
             c1, c2 = st.columns([3, 2])
             with c1:
-                show_image(q)
+                show_question(q)
             with c2:
                 if r['correct'] is True:
                     st.markdown("<span class='res-ok'>✓ Correct</span>", unsafe_allow_html=True)
@@ -529,10 +611,9 @@ elif st.session_state.mode == 'results':
                     st.markdown("<span class='res-check'>? Parent to check</span>", unsafe_allow_html=True)
                 st.write(f"**Your answer:** {r['given'] or '(blank)'}")
                 if q.get('answer'):
-                    st.write(f"**Correct answer:** {q['answer']}")
-                if q.get('explanation') and r['correct'] is not None:
-                    st.markdown(f"<div class='explain'>💡 {html.escape(q['explanation'])}</div>",
-                                unsafe_allow_html=True)
+                    st.markdown(f"**Correct answer:** {md_math(answer_text(q))}")
+                if r['correct'] is not None:
+                    show_explanation(q)
 
                 if r['correct'] is None:
                     st.caption("No answer was saved for this question.")
@@ -568,14 +649,42 @@ elif st.session_state.mode == 'results':
 # ==================== ADD QUESTIONS ====================
 elif st.session_state.mode == 'add':
     st.markdown("<div class='page-title'>Add Questions</div>"
-                "<div class='page-sub'>Add screenshots of questions your child got wrong. "
-                "With an answer saved, the app marks them automatically. "
-                "The explanation is optional and is shown after the practice is checked.</div>",
+                "<div class='page-sub'>Bring in wrong questions from Pi-Lead, or add your own screenshots. "
+                "Questions with a saved answer are marked automatically.</div>",
                 unsafe_allow_html=True)
 
     if st.session_state.get('flash'):
         st.success(st.session_state.pop('flash'))
 
+    # --- Import from Pi-Lead ---
+    with st.container(border=True):
+        st.markdown("#### 📥 Import from Pi-Lead")
+        st.markdown(
+            "1. In Chrome, open your **Pi-Lead Notebook** (Hub → Review Task).\n"
+            "2. Click the **Export to MathMastery** bookmark. A file called `pilead_export_<date>.json` downloads.\n"
+            "3. Drop that file below and press **Import**. Questions already imported keep their practice progress.")
+        with st.expander("First time? Set up the bookmark"):
+            st.markdown(
+                "1. Show the bookmarks bar in Chrome: **⌘ + Shift + B**.\n"
+                "2. Right-click the bookmarks bar → **Add page…**\n"
+                "3. Name: `Export to MathMastery`. URL: paste the code below (use the copy button at its top-right).\n"
+                "4. Press **Save**.")
+            st.code(bookmarklet(), language=None, wrap_lines=True)
+        export_file = st.file_uploader("Pi-Lead export file", type=["json"],
+                                       key=f"pilead_{st.session_state.uploader_key}")
+        with st.container(key="primary_import"):
+            if st.button("📥  Import", width="stretch", disabled=export_file is None):
+                try:
+                    added, updated = import_export(json.loads(export_file.getvalue()), db)
+                    save_json(DB_FILE, db)
+                    st.session_state.uploader_key += 1
+                    st.session_state.flash = (f"Imported from Pi-Lead: {plural(added, 'new question')}, "
+                                              f"{updated} updated.")
+                    st.rerun()
+                except (ValueError, KeyError) as e:
+                    st.error(f"Couldn't import that file: {e}")
+
+    st.markdown("#### 📷 Add your own screenshots")
     c1, c2 = st.columns(2)
     with c1:
         source = st.text_input("Where are these from?", placeholder="e.g. Selective Trial Test 3")
@@ -709,9 +818,9 @@ elif st.session_state.mode == 'report':
             with st.container(border=True):
                 c1, c2 = st.columns([3, 2])
                 with c1:
-                    show_image(q)
+                    show_question(q)
                 with c2:
-                    st.write(f"**Answer:** {q.get('answer') or '(not set)'}")
+                    st.markdown(f"**Answer:** {md_math(answer_text(q)) or '(not set)'}")
                     st.write(f"Wrong {q.get('wrong_after_review', 0)} times after review")
                     if st.button("✓ I've explained it", key=f"explained_{q['id']}"):
                         q['wrong_after_review'] = 0
@@ -727,12 +836,12 @@ elif st.session_state.mode == 'report':
                       "No answer saved": lambda q: not q.get('answer')}
     c1, c2 = st.columns(2)
     with c1:
-        f_topic = st.selectbox("Topic", ["All"] + TOPIC_CATEGORIES + ["Uncategorized"], key="list_topic")
+        f_topic = st.selectbox("Topic", ["All"] + topics_in_use(active + mastered)[0], key="list_topic")
     with c2:
         f_status = st.selectbox("Status", list(STATUS_FILTERS), key="list_status")
 
     listed = [q for q in active + mastered if STATUS_FILTERS[f_status](q)
-              and (f_topic == "All" or (q.get('topic', '') or 'Uncategorized') == f_topic)]
+              and (f_topic == "All" or topic_of(q) == f_topic)]
     st.caption(plural(len(listed), 'question'))
 
     STATE_LABEL = {'new': '⚪ New', 'learning': '🟡 Learning', 'mastered': '🟢 Mastered'}
@@ -740,15 +849,16 @@ elif st.session_state.mode == 'report':
         nxt = due_date(q)
         when = f" · next review {nxt.strftime('%-d %b')}" if state(q) == 'learning' and nxt else ""
         src = f" · {q['source']}" if q.get('source') else ""
-        with st.expander(f"{STATE_LABEL[state(q)]} · {q.get('topic') or 'Uncategorized'}{src}{when}"):
+        subj = f"{q['subject']} · " if q.get('subject') else ""
+        with st.expander(f"{STATE_LABEL[state(q)]} · {subj}{topic_of(q)}{src}{when}"):
             c1, c2 = st.columns([3, 2])
             with c1:
-                show_image(q)
+                show_question(q)
             with c2:
                 new_ans = st.text_input("Answer", value=q.get('answer', ''), key=f"e_ans_{q['id']}")
                 new_exp = st.text_area("Explanation", value=q.get('explanation', ''),
                                        key=f"e_exp_{q['id']}", height=80)
-                opts = [""] + TOPIC_CATEGORIES
+                opts = [""] + sorted(set(TOPIC_CATEGORIES) | {q2.get('topic', '') for q2 in db} - {""})
                 new_topic = st.selectbox("Topic", opts, key=f"e_top_{q['id']}",
                                          index=opts.index(q.get('topic', '')) if q.get('topic', '') in opts else 0,
                                          format_func=lambda t: t or "(none)")
