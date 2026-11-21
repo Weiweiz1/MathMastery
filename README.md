@@ -10,6 +10,7 @@ A simple practice app that helps a child prepare for the NSW Selective School te
 - **Questions to explain**: questions answered wrong 2+ times after review are flagged for a parent to explain.
 - **Pi-Lead import**: pull wrong questions (text, pictures, answers, explanations, topics) from Pi-Lead's notebook.
 - **Add Questions page**: drag in screenshots and set the topic, answer and explanation in the app.
+- **Free on-device OCR** (macOS): read a screenshot's text so practice shows easy-to-read text, with fractions like 2/5 drawn stacked and a cropped graph placed where `[graph]` is typed.
 - **Parent Report**: % mastered, days practised, reviews due, top 3 weak topics by miss rate, "what to do next" advice, and the full question list for editing.
 - **Selective test countdown** (7 May 2028).
 
@@ -42,6 +43,10 @@ streamlit run practice.py
    - Questions already imported keep their practice progress; their text, answer and explanation are refreshed.
    - Command-line alternative: `python pilead_import.py ~/Downloads/pilead_export_<date>.json`
 1. **Add questions** (parent): open **➕ Add Questions**, drop in screenshots, choose a topic, type the answer, and press **Save**. Questions without an answer can still be saved; you'll be asked to check the child's answer after practice.
+   - Optional: press **🔤 Extract text** to read the question text (free, offline, macOS Vision via `ocrmac`). Fix mistakes before saving: it is what the child reads. OCR can't read stacked fractions or diagrams, so type fractions as `2/5` and, for a graph, attach a cropped screenshot of it and type `[graph]` on its own line where it belongs. Check with **👀 Preview**, and press ⌘+Enter (or click outside the box) to apply your typing.
+   - Or tick **Show the full photo in practice** to show the whole photo under the text.
+   - A topic that isn't in the list can be added with **➕ New topic** (saved in `categories.json`).
+   - Text and graphs can be changed later in **📊 Parent Report → All questions**, which also has a search box.
 2. **Practise** (child): on **🏠 Today**, press **Start today's practice**, answer every question, then **Submit answers**.
 3. **Check progress** (parent): open **📊 Parent Report**. The daily question count is set at the bottom of that page.
 
@@ -56,6 +61,7 @@ Bulk import from folders is still possible with `python import_new.py`.
 ├── practice.py         # The Streamlit app
 ├── import_new.py       # Optional bulk import from folders
 ├── pilead_import.py    # Imports a Pi-Lead notebook export
+├── ocr.py              # Free on-device text recognition (macOS)
 ├── tools/
 │   ├── pilead_export.js      # Export script run in the Pi-Lead tab (bookmark)
 │   └── make_bookmarklet.py   # Builds the bookmark code from it

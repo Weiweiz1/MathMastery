@@ -14,6 +14,7 @@ inbox/*
 mistakes_db.json
 practice_log.json
 settings.json
+categories.json
 
 # Archived OC data
 archived_oc/

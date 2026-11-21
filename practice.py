@@ -7,6 +7,7 @@ import re
 from datetime import datetime, date, timedelta
 from pilead_import import import_export
 from tools.make_bookmarklet import bookmarklet
+from ocr import extract_text, OCR_AVAILABLE
 
 st.set_page_config(page_title="MathMastery Hub", page_icon="⭐", layout="wide", initial_sidebar_state="expanded")
 
@@ -22,7 +23,7 @@ DEFAULT_DAILY = 15
 REVIEW_INTERVALS = [1, 3, 7, 14, 30]
 EXPLAIN_AFTER = 2                    # wrong this many times after reviewing -> parent should explain
 
-TOPIC_CATEGORIES = [
+DEFAULT_TOPICS = [
     "Numbers and Calculation",
     "Factors, Multiples and Remainders",
     "Patterns",
@@ -33,6 +34,25 @@ TOPIC_CATEGORIES = [
     "Temperature, Mass and Length",
     "Problem Solving",
 ]
+CATEGORIES_FILE = "categories.json"   # topic list, once a new topic has been added from the app
+
+
+def load_categories():
+    if os.path.exists(CATEGORIES_FILE):
+        with open(CATEGORIES_FILE, 'r') as f:
+            return json.load(f)
+    return list(DEFAULT_TOPICS)
+
+
+def add_category(name):
+    categories = load_categories()
+    if name not in categories:
+        categories.append(name)
+        with open(CATEGORIES_FILE, 'w') as f:
+            json.dump(categories, f, indent=2)
+
+
+TOPIC_CATEGORIES = load_categories()
 
 
 # === STORAGE ===
@@ -205,9 +225,63 @@ def render_md(text):
         st.markdown(md_math(rest))
 
 
-def show_question(q):
-    if q.get('file_path') and os.path.exists(q['file_path']):
-        st.image(q['file_path'], width="stretch")
+FRACTION_RE = re.compile(r"(?<![\d/])(\d{1,4})/(\d{1,4})(?![\d/])")
+GRAPH_MARKER_RE = re.compile(r"\[\s*graph\s*\]", re.IGNORECASE)
+
+
+def question_html(text):
+    """Typed/OCR question text as HTML, with 2/5 drawn as a stacked fraction (dates like 7/5/2028 left alone)."""
+    safe = FRACTION_RE.sub(r"<span class='frac'><span class='num'>\1</span><span class='den'>\2</span></span>",
+                           html.escape(text))
+    return f"<div class='question-text'>{safe}</div>"
+
+
+def render_question_body(text, diagram=None):
+    """Question text with the graph placed where [graph] is typed (at the end if there's no marker).
+    diagram can be a file path or image bytes."""
+    parts = GRAPH_MARKER_RE.split(text, maxsplit=1)
+    before = parts[0].rstrip("\n")
+    after = GRAPH_MARKER_RE.sub("", parts[1]).lstrip("\n") if len(parts) > 1 else ""
+    has_diagram = diagram is not None and (not isinstance(diagram, str) or os.path.exists(diagram))
+    if before.strip():
+        st.markdown(question_html(before), unsafe_allow_html=True)
+    if has_diagram:
+        st.image(diagram)
+    elif len(parts) > 1:
+        st.caption("(graph goes here: attach a graph image)")
+    if after.strip():
+        st.markdown(question_html(after), unsafe_allow_html=True)
+
+
+def save_diagram(q, data, filename):
+    """Store a cropped graph for a question, replacing any earlier one."""
+    os.makedirs(VAULT_DIR, exist_ok=True)
+    remove_diagram(q)
+    path = os.path.join(VAULT_DIR, f"{q['id']}_diagram{os.path.splitext(filename)[1].lower() or '.png'}")
+    with open(path, 'wb') as out:
+        out.write(data)
+    q['diagram_path'] = path
+
+
+def remove_diagram(q):
+    path = q.pop('diagram_path', '')
+    if path and os.path.exists(path):
+        os.remove(path)
+
+
+def show_question(q, key="q"):
+    """Typed/OCR text if there is some (easier to read), with the graph and the original photo;
+    otherwise the screenshot; otherwise a Pi-Lead text question.
+    key keeps widget keys unique when the same question is shown twice on a page."""
+    photo = q.get('file_path', '')
+    if q.get('question_text'):
+        with st.container(border=True):
+            render_question_body(q['question_text'], q.get('diagram_path') or None)
+        if photo and os.path.exists(photo):
+            if q.get('show_photo') or st.toggle("📷 Show the original photo", key=f"photo_{key}_{q['id']}"):
+                st.image(photo, width="stretch")
+    elif photo and os.path.exists(photo):
+        st.image(photo, width="stretch")
     elif q.get('question_md'):
         render_md(q['question_md'])
     else:
@@ -367,6 +441,12 @@ section[data-testid="stSidebar"] { background: #ffffff; border-right: 1px solid 
 .banner b { color: var(--green-dark); }
 .page-title { font-size: 26px; font-weight: 800; color: var(--green-dark); margin: 0 0 4px; }
 .page-sub { color: var(--muted); font-size: 14px; margin-bottom: 16px; }
+.question-text { font-size: 1.3rem; line-height: 1.8; white-space: pre-wrap; color: var(--ink); }
+.frac { display: inline-flex; flex-direction: column; align-items: center; vertical-align: middle;
+  font-size: 0.85em; line-height: 1.15; margin: 0 0.12em; }
+.frac .num { border-bottom: 1.5px solid currentColor; padding: 0 0.15em; }
+.frac .den { padding: 0 0.15em; }
+textarea { font-size: 1.05rem !important; line-height: 1.5 !important; }
 @media (max-width: 800px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
 </style>
 """, unsafe_allow_html=True)
@@ -690,26 +770,69 @@ elif st.session_state.mode == 'add':
         source = st.text_input("Where are these from?", placeholder="e.g. Selective Trial Test 3")
     with c2:
         topic_opts = [""] + TOPIC_CATEGORIES
-        default_topic = st.selectbox("Topic for all", topic_opts, format_func=lambda t: t or "(choose later)")
+        if 'pending_topic' in st.session_state:  # select a topic that was just created
+            st.session_state.default_topic = st.session_state.pop('pending_topic')
+        default_topic = st.selectbox("Topic for all", topic_opts, key="default_topic",
+                                     format_func=lambda t: t or "(choose later)")
+        with st.expander("➕ New topic"):
+            new_topic_name = st.text_input("Topic name", key="new_topic_name")
+            if st.button("Add topic", key="add_topic_btn"):
+                name = new_topic_name.strip()
+                if not name:
+                    st.warning("Type a topic name first.")
+                elif name.lower() in (t.lower() for t in TOPIC_CATEGORIES):
+                    st.warning(f"'{name}' is already in the list.")
+                else:
+                    add_category(name)
+                    st.session_state.pending_topic = name
+                    st.session_state.pop('new_topic_name', None)
+                    st.session_state.flash = f"Added new topic: {name}"
+                    st.rerun()
 
     files = st.file_uploader("Screenshots", type=["png", "jpg", "jpeg"], accept_multiple_files=True,
                              key=f"uploader_{st.session_state.uploader_key}")
 
+    uk = st.session_state.uploader_key
+    if files and OCR_AVAILABLE and len(files) > 1:
+        if st.button(f"🔤  Extract text from all {len(files)} screenshots"):
+            with st.spinner("Reading text..."):
+                for i, f in enumerate(files):
+                    st.session_state[f"new_text_{uk}_{i}"] = extract_text(f.getvalue())
+            st.rerun()
+
+    known_hashes = {q.get('file_hash') for q in db}
     entries = []
     for i, f in enumerate(files or []):
         with st.container(border=True):
-            c1, c2 = st.columns([3, 2])
+            if hashlib.md5(f.getvalue()).hexdigest() in known_hashes:
+                st.warning(f"{f.name} is already in MathMastery. It will be skipped.")
+            c1, c2 = st.columns([5, 6], gap="medium")
             with c1:
                 st.image(f, width="stretch")
+                diagram = st.file_uploader("📎 Graph (optional): crop just the graph, then type [graph] "
+                                           "in the text where it goes", type=["png", "jpg", "jpeg"],
+                                           key=f"new_diag_{uk}_{i}")
+                show_photo = st.checkbox("Show the full photo in practice (e.g. it has a graph you didn't crop)",
+                                         key=f"new_photo_{uk}_{i}")
             with c2:
+                if OCR_AVAILABLE and st.button("🔤  Extract text", key=f"ocr_{uk}_{i}"):
+                    with st.spinner("Reading text..."):
+                        st.session_state[f"new_text_{uk}_{i}"] = extract_text(f.getvalue())
+                    st.rerun()
+                text = st.text_area("Question text (optional, check and fix mistakes)", height=300,
+                                    key=f"new_text_{uk}_{i}",
+                                    help="With text, practice shows the text instead of the photo. "
+                                         "Type fractions as 2/5 (shown stacked) and [graph] on its own line "
+                                         "where the graph goes. Press ⌘+Enter or click outside to apply.")
+                if text.strip():
+                    with st.expander("👀 Preview: how it looks in practice", expanded=diagram is not None):
+                        render_question_body(text, diagram.getvalue() if diagram else None)
                 topic = st.selectbox("Topic", topic_opts, index=topic_opts.index(default_topic),
-                                     key=f"new_topic_{st.session_state.uploader_key}_{i}",
+                                     key=f"new_topic_{uk}_{i}",
                                      format_func=lambda t: t or "(choose later)")
-                answer = st.text_input("Answer", placeholder="e.g. C",
-                                       key=f"new_ans_{st.session_state.uploader_key}_{i}")
-                explanation = st.text_area("Explanation (optional)", height=80,
-                                           key=f"new_exp_{st.session_state.uploader_key}_{i}")
-            entries.append((f, topic, answer, explanation))
+                answer = st.text_input("Answer", placeholder="e.g. C", key=f"new_ans_{uk}_{i}")
+                explanation = st.text_area("Explanation (optional)", height=80, key=f"new_exp_{uk}_{i}")
+            entries.append((f, topic, answer, explanation, text, diagram, show_photo))
 
     if entries:
         missing = sum(1 for e in entries if not e[2].strip())
@@ -725,7 +848,7 @@ elif st.session_state.mode == 'add':
                         if len(q['id'].split('_')) == 2 and q['id'].split('_')[1].isdigit()]
                 next_num = max(nums, default=0) + 1
                 added = skipped = 0
-                for f, topic, answer, explanation in entries:
+                for f, topic, answer, explanation, text, diagram, show_photo in entries:
                     data = f.getvalue()
                     fhash = hashlib.md5(data).hexdigest()
                     if fhash in hashes:
@@ -735,11 +858,15 @@ elif st.session_state.mode == 'add':
                     path = os.path.join(VAULT_DIR, q_id + os.path.splitext(f.name)[1].lower())
                     with open(path, 'wb') as out:
                         out.write(data)
-                    db.append({"id": q_id, "file_path": path, "original_filename": f.name, "file_hash": fhash,
-                               "answer": answer.strip(), "explanation": explanation.strip(),
-                               "source": source.strip(), "topic": topic, "status": "active",
-                               "times_practiced": 0, "times_correct": 0,
-                               "created": datetime.now().isoformat()})
+                    new_q = {"id": q_id, "file_path": path, "original_filename": f.name, "file_hash": fhash,
+                             "answer": answer.strip(), "explanation": explanation.strip(),
+                             "question_text": text.strip(), "show_photo": show_photo,
+                             "source": source.strip(), "topic": topic, "status": "active",
+                             "times_practiced": 0, "times_correct": 0,
+                             "created": datetime.now().isoformat()}
+                    if diagram is not None:
+                        save_diagram(new_q, diagram.getvalue(), diagram.name)
+                    db.append(new_q)
                     hashes.add(fhash)
                     next_num += 1
                     added += 1
@@ -818,7 +945,7 @@ elif st.session_state.mode == 'report':
             with st.container(border=True):
                 c1, c2 = st.columns([3, 2])
                 with c1:
-                    show_question(q)
+                    show_question(q, key="explain")
                 with c2:
                     st.markdown(f"**Answer:** {md_math(answer_text(q)) or '(not set)'}")
                     st.write(f"Wrong {q.get('wrong_after_review', 0)} times after review")
@@ -834,14 +961,18 @@ elif st.session_state.mode == 'report':
                       "Learning": lambda q: state(q) == 'learning',
                       "Mastered": lambda q: state(q) == 'mastered',
                       "No answer saved": lambda q: not q.get('answer')}
-    c1, c2 = st.columns(2)
+    c1, c2, c3 = st.columns(3)
     with c1:
         f_topic = st.selectbox("Topic", ["All"] + topics_in_use(active + mastered)[0], key="list_topic")
     with c2:
         f_status = st.selectbox("Status", list(STATUS_FILTERS), key="list_status")
+    with c3:
+        f_search = st.text_input("Search question text", key="list_search").strip().lower()
 
     listed = [q for q in active + mastered if STATUS_FILTERS[f_status](q)
-              and (f_topic == "All" or topic_of(q) == f_topic)]
+              and (f_topic == "All" or topic_of(q) == f_topic)
+              and (not f_search or f_search in (q.get('question_text', '') + " " + q.get('question_md', '')
+                                                + " " + q.get('source', '')).lower())]
     st.caption(plural(len(listed), 'question'))
 
     STATE_LABEL = {'new': '⚪ New', 'learning': '🟡 Learning', 'mastered': '🟢 Mastered'}
@@ -853,7 +984,27 @@ elif st.session_state.mode == 'report':
         with st.expander(f"{STATE_LABEL[state(q)]} · {subj}{topic_of(q)}{src}{when}"):
             c1, c2 = st.columns([3, 2])
             with c1:
-                show_question(q)
+                show_question(q, key="list")
+                if q.get('file_path'):  # screenshot questions can have typed text and a graph
+                    new_text = st.text_area("Question text (shown in practice instead of the photo)",
+                                            value=q.get('question_text', ''), key=f"e_text_{q['id']}", height=200,
+                                            help="Type fractions as 2/5 and [graph] on its own line where the "
+                                                 "graph goes. Press ⌘+Enter or click outside to apply.")
+                    new_diag = st.file_uploader("📎 Attach or replace graph", type=["png", "jpg", "jpeg"],
+                                                key=f"e_diag_{q['id']}")
+                    new_photo = st.checkbox("Show the full photo in practice", value=q.get('show_photo', False),
+                                            key=f"e_photo_{q['id']}")
+                    if new_text.strip() and (new_text.strip() != q.get('question_text', '') or new_diag is not None):
+                        with st.container(border=True):
+                            st.caption("👀 Preview (not saved yet)")
+                            render_question_body(new_text, new_diag.getvalue() if new_diag
+                                                 else q.get('diagram_path') or None)
+                    if q.get('diagram_path') and st.button("✖ Remove graph", key=f"e_rmdiag_{q['id']}"):
+                        remove_diagram(q)
+                        save_json(DB_FILE, db)
+                        st.rerun()
+                else:
+                    new_text, new_diag, new_photo = None, None, None
             with c2:
                 new_ans = st.text_input("Answer", value=q.get('answer', ''), key=f"e_ans_{q['id']}")
                 new_exp = st.text_area("Explanation", value=q.get('explanation', ''),
@@ -870,6 +1021,11 @@ elif st.session_state.mode == 'report':
                     if st.button("Save", key=f"e_save_{q['id']}", type="primary"):
                         q.update(answer=new_ans.strip(), explanation=new_exp.strip(),
                                  topic=new_topic, source=new_src.strip())
+                        if new_text is not None:
+                            q.update(question_text=new_text.strip(), show_photo=new_photo)
+                        if new_diag is not None:
+                            save_diagram(q, new_diag.getvalue(), new_diag.name)
+                            st.session_state.pop(f"e_diag_{q['id']}", None)
                         save_json(DB_FILE, db)
                         st.rerun()
                 with b2:
