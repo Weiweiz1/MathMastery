@@ -502,14 +502,31 @@ with st.sidebar:
     </div>""", unsafe_allow_html=True)
 
 # === HEADER ===
+# A new encouraging sentence each day (same one all day)
+DAILY_SENTENCES = [
+    "Every mistake you fix today is one you won't make on test day.",
+    "Mistakes are proof that you are trying. Let's learn from them!",
+    "Small steps every day add up to big results.",
+    "Your brain grows stronger every time you work out a hard problem.",
+    "You don't have to be perfect, just a little better than yesterday.",
+    "Hard questions are how champions are made. You've got this!",
+    "Take a deep breath, read carefully, and believe in yourself.",
+    "The more you practise, the luckier you get.",
+    "Great mathematicians are made by practice, not by magic.",
+    "Today's effort is tomorrow's confidence.",
+    "If it's hard, it means you're learning something new.",
+    "Keep going! Every question makes you smarter.",
+    "Be proud of how far you've come, and excited for how far you'll go.",
+    "Slow and careful beats fast and careless.",
+]
+daily_sentence = DAILY_SENTENCES[TODAY.toordinal() % len(DAILY_SENTENCES)]
 days_left = (SELECTIVE_TEST_DATE - TODAY).days
 countdown = f"<span class='pill'>⏰ <b>{days_left}</b> days to Selective Test</span>" if days_left > 0 else ""
 st.markdown(f"""
 <div class='hub-header'>
   <div>
-    <div class='hub-title'>Welcome back, {html.escape(STUDENT_NAME)}</div>
-    <div class='hub-sub'>{TODAY.strftime('%a, %b %-d, %Y')}
-      <span class='pill'><span class='dot'></span>Keep going! You are building great habits.</span></div>
+    <div class='hub-title'>{html.escape(daily_sentence)}</div>
+    <div class='hub-sub'>{TODAY.strftime('%a, %b %-d, %Y')}</div>
   </div>
   <div class='head-right'>{countdown}<div class='avatar'>{html.escape(STUDENT_NAME[:1])}</div></div>
 </div>""", unsafe_allow_html=True)
@@ -528,16 +545,12 @@ if st.session_state.mode == 'today':
     tag_cls = ['g', 'b', 'a']
     focus_html = "".join(f"<span class='tag {tag_cls[i]}'>{html.escape(t)}</span>" for i, t in enumerate(focus)) \
         or "<span class='strip-small'>Shows up after some practice</span>"
-    explain_n = sum(1 for q in active if needs_explaining(q))
     st.markdown(f"""
     <div class='strip'>
       <div class='strip-sec'><div class='ico'>📅</div>
         <div><div class='strip-big'>Selective Test</div>
         <div class='strip-small'>{SELECTIVE_TEST_DATE.strftime('%-d %b %Y')} · {max(days_left, 0)} days</div></div></div>
       <div class='strip-sec grow'><div><div class='strip-label'>Focus Topics</div>{focus_html}</div></div>
-      <div class='strip-sec end'><div class='ico amber'>🙋</div>
-        <div><div class='amber-title'>Ask a parent</div>
-        <div class='strip-small'>{plural(explain_n, 'question')} to explain</div></div></div>
     </div>""", unsafe_allow_html=True)
 
     left, right = st.columns(2, gap="medium")
@@ -729,40 +742,12 @@ elif st.session_state.mode == 'results':
 # ==================== ADD QUESTIONS ====================
 elif st.session_state.mode == 'add':
     st.markdown("<div class='page-title'>Add Questions</div>"
-                "<div class='page-sub'>Bring in wrong questions from Pi-Lead, or add your own screenshots. "
+                "<div class='page-sub'>Add your own screenshots, or bring in wrong questions from Pi-Lead. "
                 "Questions with a saved answer are marked automatically.</div>",
                 unsafe_allow_html=True)
 
     if st.session_state.get('flash'):
         st.success(st.session_state.pop('flash'))
-
-    # --- Import from Pi-Lead ---
-    with st.container(border=True):
-        st.markdown("#### 📥 Import from Pi-Lead")
-        st.markdown(
-            "1. In Chrome, open your **Pi-Lead Notebook** (Hub → Review Task).\n"
-            "2. Click the **Export to MathMastery** bookmark. A file called `pilead_export_<date>.json` downloads.\n"
-            "3. Drop that file below and press **Import**. Questions already imported keep their practice progress.")
-        with st.expander("First time? Set up the bookmark"):
-            st.markdown(
-                "1. Show the bookmarks bar in Chrome: **⌘ + Shift + B**.\n"
-                "2. Right-click the bookmarks bar → **Add page…**\n"
-                "3. Name: `Export to MathMastery`. URL: paste the code below (use the copy button at its top-right).\n"
-                "4. Press **Save**.")
-            st.code(bookmarklet(), language=None, wrap_lines=True)
-        export_file = st.file_uploader("Pi-Lead export file", type=["json"],
-                                       key=f"pilead_{st.session_state.uploader_key}")
-        with st.container(key="primary_import"):
-            if st.button("📥  Import", width="stretch", disabled=export_file is None):
-                try:
-                    added, updated = import_export(json.loads(export_file.getvalue()), db)
-                    save_json(DB_FILE, db)
-                    st.session_state.uploader_key += 1
-                    st.session_state.flash = (f"Imported from Pi-Lead: {plural(added, 'new question')}, "
-                                              f"{updated} updated.")
-                    st.rerun()
-                except (ValueError, KeyError) as e:
-                    st.error(f"Couldn't import that file: {e}")
 
     st.markdown("#### 📷 Add your own screenshots")
     c1, c2 = st.columns(2)
@@ -875,6 +860,35 @@ elif st.session_state.mode == 'add':
                 st.session_state.flash = f"Saved {plural(added, 'question')}." + (
                     f" Skipped {skipped} that were already added." if skipped else "")
                 st.rerun()
+
+    st.divider()
+    # --- Import from Pi-Lead ---
+    with st.container(border=True):
+        st.markdown("#### 📥 Import from Pi-Lead")
+        st.markdown(
+            "1. In Chrome, open your **Pi-Lead Notebook** (Hub → Review Task).\n"
+            "2. Click the **Export to MathMastery** bookmark. A file called `pilead_export_<date>.json` downloads.\n"
+            "3. Drop that file below and press **Import**. Questions already imported keep their practice progress.")
+        with st.expander("First time? Set up the bookmark"):
+            st.markdown(
+                "1. Show the bookmarks bar in Chrome: **⌘ + Shift + B**.\n"
+                "2. Right-click the bookmarks bar → **Add page…**\n"
+                "3. Name: `Export to MathMastery`. URL: paste the code below (use the copy button at its top-right).\n"
+                "4. Press **Save**.")
+            st.code(bookmarklet(), language=None, wrap_lines=True)
+        export_file = st.file_uploader("Pi-Lead export file", type=["json"],
+                                       key=f"pilead_{st.session_state.uploader_key}")
+        with st.container(key="primary_import"):
+            if st.button("📥  Import", width="stretch", disabled=export_file is None):
+                try:
+                    added, updated = import_export(json.loads(export_file.getvalue()), db)
+                    save_json(DB_FILE, db)
+                    st.session_state.uploader_key += 1
+                    st.session_state.flash = (f"Imported from Pi-Lead: {plural(added, 'new question')}, "
+                                              f"{updated} updated.")
+                    st.rerun()
+                except (ValueError, KeyError) as e:
+                    st.error(f"Couldn't import that file: {e}")
 
 # ==================== PARENT REPORT ====================
 elif st.session_state.mode == 'report':
